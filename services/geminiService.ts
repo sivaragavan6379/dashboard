@@ -6,36 +6,28 @@ export const summarizeContent = async (params: SummarizeParams): Promise<Summary
   const { text, imageBase64, mimeType } = params;
   
   /**
-   * TARGET FOR NETLIFY BUILD COMMAND:
-   * Your 'sed' command looks for the exact string 'process.env.API_KEY'.
-   * It will replace it with your actual key during deployment.
+   * IMPORTANT: The 'sed' command in Netlify replaces the string below.
+   * If you see 'process.env.API_KEY' in your browser console, the sed command failed.
    */
   const apiKey = process.env.API_KEY;
   
-  // Validation logic to check if 'sed' succeeded
-  const isKeyInvalid = !apiKey || 
-                       apiKey === "undefined" || 
-                       (typeof apiKey === 'string' && apiKey.includes("process.env"));
-
-  if (isKeyInvalid) {
+  if (!apiKey || apiKey === "undefined" || (typeof apiKey === 'string' && apiKey.includes("process.env"))) {
     throw new Error(
-      "AI NODE OFFLINE: Key Injection Failed. " +
-      "1. Check your Netlify Environment Variables for 'API_KEY'. " +
-      "2. Ensure Build Command is: sed -i \"s|process.env.API_KEY|'$API_KEY'|g\" services/geminiService.ts"
+      "AI NODE OFFLINE: Key Injection Failed. Check Netlify Environment Variables and Build Command."
     );
   }
 
   const ai = new GoogleGenAI({ apiKey: apiKey as string });
   
   const systemInstruction = `
-    You are 'InsightDash', an advanced campus AI node.
-    Return a JSON response with:
-    1. "detailedSummary": Comprehensive Markdown with bullet points.
-    2. "shortSummary": A 1-sentence headline + 1 emoji.
+    You are 'InsightDash', an AI node.
+    Return a JSON object with:
+    1. "detailedSummary": Markdown analysis.
+    2. "shortSummary": One-sentence headline + emoji.
   `;
 
   const parts: any[] = [];
-  if (text) parts.push({ text: `Analyze text: ${text}` });
+  if (text) parts.push({ text: `Analyze this: ${text}` });
   if (imageBase64 && mimeType) {
     parts.push({
       inlineData: {
@@ -63,19 +55,13 @@ export const summarizeContent = async (params: SummarizeParams): Promise<Summary
       },
     });
 
-    const rawText = response.text || "{}";
-    const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-    const result = JSON.parse(cleanJson);
-
+    const result = JSON.parse(response.text || "{}");
     return {
-      detailedSummary: result.detailedSummary || "No detailed summary available.",
-      shortSummary: result.shortSummary || "New update received! 📡",
+      detailedSummary: result.detailedSummary || "No detailed summary provided.",
+      shortSummary: result.shortSummary || "Update Received 📡",
     };
   } catch (error: any) {
-    console.error("AI Error:", error);
-    if (error.message?.includes("403")) {
-      throw new Error("AUTH ERROR: Check if your API Key is valid and has billing enabled.");
-    }
-    throw new Error(error.message || "Synthesis failed. Uplink timed out.");
+    console.error("AI Node Error:", error);
+    throw new Error(error.message || "Uplink Failed.");
   }
 };
