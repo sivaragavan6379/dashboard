@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-import { Welcome } from './components/Welcome';
-import { TestingPage } from './components/TestingPage';
-import { AdminPanel } from './components/AdminPanel';
-import { Page, BoxData, SummaryHistoryItem, TargetBox } from './types';
+import { Welcome } from './components/Welcome.tsx';
+import { TestingPage } from './components/TestingPage.tsx';
+import { AdminPanel } from './components/AdminPanel.tsx';
+import { Page, BoxData, SummaryHistoryItem, TargetBox } from './types.ts';
 
 const INITIAL_BOX_DATA: BoxData = {
   exam: "Final Exams starting next Monday. Check your assigned rooms in the main hall.",
   examImage: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=600&q=80",
   event: "Annual Science Fair on Friday. Registration closes this evening.",
   eventImage: "https://images.unsplash.com/photo-1523580494863-6f3031224c94?auto=format&fit=crop&w=600&q=80",
-  updates: [], // Starts empty to only display manual commands from Admin
+  updates: [], 
   updatesImage: "https://images.unsplash.com/photo-1504711432819-04220752705a?auto=format&fit=crop&w=600&q=80",
   quote: "The only way to do great work is to love what you do.",
   quoteImage: "https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&w=600&q=80",
@@ -40,7 +40,6 @@ const App: React.FC = () => {
     setBoxData(prev => {
       const fieldImage = `${target}Image` as keyof BoxData;
       if (target === 'updates') {
-        // We prepend new manual commands to the list
         return { 
           ...prev, 
           updates: [summary, ...prev.updates].slice(0, 15),

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { summarizeContent } from '../services/geminiService';
-import { SummaryHistoryItem, TargetBox } from '../types';
+import { summarizeContent } from '../services/geminiService.ts';
+import { SummaryHistoryItem, TargetBox } from '../types.ts';
 
 interface AdminPanelProps {
   theme: 'light' | 'dark';
@@ -21,7 +21,6 @@ const PRESET_COMMANDS = [
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history, setHistory, onUpdateBox, onBack }) => {
   const [inputText, setInputText] = useState('');
-  const [tickerInput, setTickerInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,10 +28,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
   const [error, setError] = useState<{message: string, detail?: string} | null>(null);
   const [targetBox, setTargetBox] = useState<TargetBox>('general');
 
-  // Logic to check if the key was replaced by the 'sed' command
+  // Robust check for injected API key
   const isAiLinked = typeof process.env.API_KEY === 'string' && 
                      !process.env.API_KEY.includes("process.env") && 
-                     process.env.API_KEY !== "undefined";
+                     process.env.API_KEY !== "undefined" &&
+                     process.env.API_KEY !== "";
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -110,8 +110,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
   return (
     <div className={`min-h-screen p-6 lg:p-10 transition-colors ${isDark ? 'bg-[#020617] text-white' : 'bg-slate-50 text-slate-900'}`}>
       <div className="max-w-6xl mx-auto space-y-10">
-        
-        {/* Header with AI Status */}
         <div className={`p-8 rounded-[2rem] border flex flex-col md:flex-row items-center justify-between gap-6 ${isDark ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200 shadow-sm'}`}>
           <div className="flex items-center space-x-6">
             <button onClick={onBack} className="p-4 bg-indigo-600 rounded-xl hover:bg-indigo-500 transition-colors">
@@ -177,18 +175,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
                     {loading ? 'Processing...' : 'Deploy Update'}
                   </button>
                 </div>
-              </div>
-            </div>
-
-            {/* Quick Ticker Controls */}
-            <div className={`p-8 rounded-[2rem] border ${isDark ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200'}`}>
-              <h2 className="text-xs font-black uppercase tracking-widest text-orange-500 mb-6">Live Ticker Quick-Launch</h2>
-              <div className="flex flex-wrap gap-3">
-                {PRESET_COMMANDS.map((cmd, i) => (
-                  <button key={i} onClick={() => onUpdateBox('updates', cmd)} className="px-4 py-2 border border-white/5 bg-white/5 rounded-lg text-[10px] font-bold uppercase hover:bg-orange-500/20 hover:border-orange-500/50 transition-all">
-                    {cmd}
-                  </button>
-                ))}
               </div>
             </div>
           </div>
