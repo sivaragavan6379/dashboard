@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Layout } from './Layout';
 import { summarizeContent } from '../services/geminiService';
-import { SummaryHistoryItem, SummaryResult, TargetBox } from '../types';
+import { SummaryHistoryItem, TargetBox } from '../types';
 
 interface AdminPanelProps {
   theme: 'light' | 'dark';
@@ -15,11 +14,9 @@ interface AdminPanelProps {
 
 const PRESET_COMMANDS = [
   "Tomorrow is a Campus Holiday! 🏖️",
-  "System Maintenance scheduled for 2:00 PM 🛠️",
+  "System Maintenance at 2:00 PM 🛠️",
   "Library extended hours start today 📚",
-  "Emergency Drill at 11:00 AM - Remain Calm 🚨",
-  "New Cafeteria Menu is now live! 🍎",
-  "Stay Hydrated! Campus Water Day 💧"
+  "New Cafeteria Menu is now live! 🍎"
 ];
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history, setHistory, onUpdateBox, onBack }) => {
@@ -32,8 +29,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
   const [error, setError] = useState<{message: string, detail?: string} | null>(null);
   const [targetBox, setTargetBox] = useState<TargetBox>('general');
 
-  // Check if API key is likely injected
-  const isAiLinked = !process.env.API_KEY?.includes("process.env") && process.env.API_KEY !== undefined;
+  // Logic to check if the key was replaced by the 'sed' command
+  const isAiLinked = typeof process.env.API_KEY === 'string' && 
+                     !process.env.API_KEY.includes("process.env") && 
+                     process.env.API_KEY !== "undefined";
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -43,25 +42,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
       setSelectedFile(file);
-      setError(null);
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
     }
   };
 
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  };
-
-  const pushToTicker = (msg: string) => {
-    if (!msg.trim()) return;
-    onUpdateBox('updates', msg);
-    setTickerInput('');
-  };
-
   const handleSync = async () => {
     if (!inputText.trim() && !selectedFile) {
-      setError({ message: "Payload Missing", detail: "Enter text or upload an image to begin synthesis." });
+      setError({ message: "Payload Missing", detail: "Provide text or image to synthesize." });
       return;
     }
 
@@ -77,7 +65,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
         const reader = new FileReader();
         const base64Data = await new Promise<string>((res, rej) => {
           reader.onload = () => res((reader.result as string).split(',')[1]);
-          reader.onerror = () => rej(new Error("Image serialization failure"));
+          reader.onerror = () => rej(new Error("File conversion failed"));
           reader.readAsDataURL(selectedFile);
         });
         imageBase64 = base64Data;
@@ -86,238 +74,141 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
       }
 
       if (isManualMode) {
-        const newItem: SummaryHistoryItem = {
-          id: Date.now().toString(),
-          timestamp: Date.now(),
-          type: inputText && selectedFile ? 'both' : selectedFile ? 'image' : 'text',
-          target: targetBox,
-          detailedSummary: inputText,
-          shortSummary: inputText || "Manual Update Applied",
-          imagePreview: persistentImageSrc,
-        };
-        
-        setHistory(prev => [newItem, ...prev].slice(0, 15));
-        onUpdateBox(targetBox, inputText || "Update Applied", persistentImageSrc);
-        setInputText('');
-        setSelectedFile(null);
-        setPreviewUrl(null);
+        const result = { detailedSummary: inputText, shortSummary: inputText || "Update Applied" };
+        updateHistoryAndDashboard(result, persistentImageSrc);
       } else {
         const result = await summarizeContent({ text: inputText, imageBase64, mimeType });
-        
-        const newItem: SummaryHistoryItem = {
-          id: Date.now().toString(),
-          timestamp: Date.now(),
-          type: inputText && selectedFile ? 'both' : selectedFile ? 'image' : 'text',
-          target: targetBox,
-          detailedSummary: result.detailedSummary,
-          shortSummary: result.shortSummary,
-          imagePreview: persistentImageSrc,
-        };
-        
-        setHistory(prev => [newItem, ...prev].slice(0, 15));
-        onUpdateBox(targetBox, result.shortSummary, persistentImageSrc);
-        setInputText('');
-        setSelectedFile(null);
-        setPreviewUrl(null);
+        updateHistoryAndDashboard(result, persistentImageSrc);
       }
+      
+      setInputText('');
+      setSelectedFile(null);
+      setPreviewUrl(null);
     } catch (err: any) {
-      setError({ 
-        message: "AI Sync Error", 
-        detail: err.message || "Failed to communicate with Gemini API." 
-      });
+      setError({ message: "Sync Error", detail: err.message });
     } finally {
       setLoading(false);
     }
   };
 
+  const updateHistoryAndDashboard = (result: any, img?: string) => {
+    const newItem: SummaryHistoryItem = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      type: inputText && selectedFile ? 'both' : selectedFile ? 'image' : 'text',
+      target: targetBox,
+      detailedSummary: result.detailedSummary,
+      shortSummary: result.shortSummary,
+      imagePreview: img,
+    };
+    setHistory(prev => [newItem, ...prev].slice(0, 15));
+    onUpdateBox(targetBox, result.shortSummary, img);
+  };
+
   const isDark = theme === 'dark';
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 font-sans p-6 lg:p-10 ${isDark ? 'bg-[#020617] text-slate-300' : 'bg-slate-50 text-slate-700'}`}>
-      <div className="max-w-7xl mx-auto">
-        {/* Navigation & Theme Toggle */}
-        <div className={`flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6 p-8 rounded-[2.5rem] border backdrop-blur-xl transition-all ${isDark ? 'bg-slate-900/40 border-white/5 shadow-2xl' : 'bg-white border-slate-200 shadow-md'}`}>
+    <div className={`min-h-screen p-6 lg:p-10 transition-colors ${isDark ? 'bg-[#020617] text-white' : 'bg-slate-50 text-slate-900'}`}>
+      <div className="max-w-6xl mx-auto space-y-10">
+        
+        {/* Header with AI Status */}
+        <div className={`p-8 rounded-[2rem] border flex flex-col md:flex-row items-center justify-between gap-6 ${isDark ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200 shadow-sm'}`}>
           <div className="flex items-center space-x-6">
-            <button onClick={onBack} className="p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl transition-all shadow-lg active:scale-95">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+            <button onClick={onBack} className="p-4 bg-indigo-600 rounded-xl hover:bg-indigo-500 transition-colors">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7"/></svg>
             </button>
             <div>
               <div className="flex items-center space-x-3">
-                <h1 className={`text-3xl font-black tracking-tighter uppercase italic transition-colors ${isDark ? 'text-white' : 'text-slate-900'}`}>Control <span className="text-indigo-500">Center</span></h1>
+                <h1 className="text-2xl font-black uppercase italic tracking-tighter">Control <span className="text-indigo-500">Center</span></h1>
                 <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${isAiLinked ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500 animate-pulse'}`}>
-                  {isAiLinked ? 'AI LINKED' : 'AI OFFLINE'}
+                  {isAiLinked ? '• AI LINKED' : '• AI OFFLINE'}
                 </div>
               </div>
-              <p className={`text-[10px] font-black uppercase tracking-[0.4em] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>System: NODE-ALPHA-01</p>
+              <p className="text-[10px] uppercase tracking-[0.3em] opacity-40">Network: Node-01</p>
             </div>
           </div>
-          <div className="flex items-center space-x-6">
-             <button 
-                onClick={toggleTheme} 
-                className={`flex items-center space-x-2 px-4 py-2 rounded-2xl border transition-all ${isDark ? 'bg-slate-800 border-white/10 text-white hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'}`}
-             >
-                {isDark ? (
-                    <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707ZM12 7a5 5 0 100 10 5 5 0 000-10z" /></svg><span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Light</span></>
-                ) : (
-                    <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg><span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Dark</span></>
-                )}
-             </button>
-          </div>
+          <button onClick={() => setTheme(isDark ? 'light' : 'dark')} className="px-4 py-2 border rounded-xl text-[10px] font-black uppercase">
+            {isDark ? 'Light Mode' : 'Dark Mode'}
+          </button>
         </div>
 
         {error && (
-          <div className="mb-10 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className={`p-8 rounded-[2.5rem] border-2 flex items-start space-x-5 ${isDark ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-red-50 border-red-200 text-red-800'}`}>
-              <div className="p-3 bg-red-500/20 rounded-2xl">
-                <svg className="w-8 h-8 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-              </div>
-              <div className="flex-1">
-                <p className="font-black uppercase text-sm tracking-widest mb-2">{error.message}</p>
-                <p className="text-sm opacity-80 leading-relaxed font-medium">{error.detail}</p>
-                {error.detail?.includes("Netlify") && (
-                   <div className="mt-4 space-y-2">
-                     <p className="text-[10px] font-black uppercase tracking-wider opacity-60">Apply this build command in Netlify:</p>
-                     <div className={`p-4 rounded-xl font-mono text-xs overflow-x-auto ${isDark ? 'bg-black/40' : 'bg-white/50'}`}>
-                        sed -i "s|process.env.API_KEY|'$API_KEY'|g" services/geminiService.ts
-                     </div>
-                   </div>
-                )}
-              </div>
-              <button onClick={() => setError(null)} className="opacity-50 hover:opacity-100 transition-opacity"><svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
-            </div>
+          <div className="p-6 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-200 text-sm">
+            <p className="font-black uppercase mb-1">{error.message}</p>
+            <p className="opacity-70 font-mono text-xs">{error.detail}</p>
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          <div className="lg:col-span-8 space-y-10">
-            <div className={`border rounded-[3rem] p-10 shadow-2xl relative overflow-hidden transition-all ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200'}`}>
-              <div className="relative z-10 space-y-8">
-                <div className={`flex items-center justify-between border-b pb-6 transition-colors ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-2 h-6 bg-indigo-500 rounded-full"></div>
-                    <h2 className={`text-sm font-black uppercase tracking-[0.2em] ${isDark ? 'text-white' : 'text-slate-900'}`}>Deployment Portal</h2>
-                  </div>
-                  <div className={`flex p-1.5 rounded-2xl border transition-colors ${isDark ? 'bg-black/40 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
-                    <button onClick={() => setIsManualMode(false)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!isManualMode ? 'bg-indigo-600 text-white shadow-lg' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>AI Sync</button>
-                    <button onClick={() => setIsManualMode(true)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isManualMode ? (isDark ? 'bg-slate-700' : 'bg-slate-400') + ' text-white shadow-lg' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>Manual</button>
-                  </div>
-                </div>
-                
-                <textarea
-                  className={`w-full h-44 p-8 border rounded-[2rem] focus:ring-4 outline-none font-medium transition-all text-xl resize-none custom-scrollbar ${isDark ? 'bg-black/40 border-white/5 text-white placeholder:text-slate-700' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-300'}`}
-                  placeholder={isManualMode ? "Enter manual text update..." : "Paste long text or upload image for AI summary..."}
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          <div className="lg:col-span-2 space-y-10">
+            <div className={`p-10 rounded-[2.5rem] border ${isDark ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200'}`}>
+              <div className="flex items-center justify-between mb-8">
+                 <h2 className="text-xs font-black uppercase tracking-widest text-indigo-500">Deployment Portal</h2>
+                 <div className="flex bg-black/20 p-1 rounded-xl">
+                   <button onClick={() => setIsManualMode(false)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase ${!isManualMode ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>AI Sync</button>
+                   <button onClick={() => setIsManualMode(true)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase ${isManualMode ? 'bg-slate-700 text-white' : 'text-slate-500'}`}>Manual</button>
+                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className={`relative h-32 border-2 border-dashed rounded-[2rem] transition-all group overflow-hidden cursor-pointer ${isDark ? 'border-white/10 bg-black/30' : 'border-slate-200 bg-slate-50'}`}>
-                    {previewUrl ? (
-                      <div className="w-full h-full relative">
-                        <img src={previewUrl} className="w-full h-full object-cover" alt="Asset" />
-                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center">
-                          <button onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setPreviewUrl(null); }} className="px-6 py-2 bg-red-600 text-white rounded-full text-xs font-black">Clear Asset</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center space-y-2">
-                        <svg className="w-6 h-6 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Add Image</p>
-                        <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col justify-between space-y-4">
-                    <select 
-                      value={targetBox} 
-                      onChange={(e) => setTargetBox(e.target.value as TargetBox)} 
-                      className={`w-full p-4 border rounded-[1.5rem] text-sm font-black uppercase tracking-widest outline-none ${isDark ? 'bg-black/40 border-white/5 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
-                    >
-                      <option value="exam">Target: Exam Corner</option>
-                      <option value="updates">Target: Live Feed</option>
-                      <option value="event">Target: Campus Events</option>
-                      <option value="quote">Target: Daily Wisdom</option>
-                      <option value="general">Target: Core Node</option>
-                    </select>
-                    <button 
-                      onClick={handleSync} 
-                      disabled={loading}
-                      className={`w-full h-16 rounded-[1.5rem] font-black uppercase tracking-widest text-white transition-all active:scale-95 flex items-center justify-center space-x-3 disabled:opacity-50 ${isManualMode ? 'bg-amber-600' : 'bg-indigo-600'}`}
-                    >
-                      {loading ? (
-                        <>
-                          <div className="w-5 h-5 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
-                          <span>Syncing...</span>
-                        </>
-                      ) : (
-                        <span>Deploy Update</span>
-                      )}
-                    </button>
-                  </div>
+              <textarea 
+                className={`w-full h-48 p-6 rounded-2xl border outline-none font-medium resize-none mb-8 ${isDark ? 'bg-black/20 border-white/5 text-white' : 'bg-slate-50 border-slate-200'}`}
+                placeholder="Paste content here..."
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className={`h-32 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center relative overflow-hidden ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+                  {previewUrl ? (
+                    <img src={previewUrl} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[10px] font-black uppercase opacity-30">Add Image</span>
+                  )}
+                  <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
+                </div>
+                <div className="space-y-4">
+                  <select value={targetBox} onChange={(e) => setTargetBox(e.target.value as TargetBox)} className={`w-full p-4 rounded-xl border text-[10px] font-black uppercase tracking-widest outline-none ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                    <option value="exam">Exam Corner</option>
+                    <option value="updates">Live Feed</option>
+                    <option value="event">Campus Events</option>
+                    <option value="general">Global Node</option>
+                  </select>
+                  <button onClick={handleSync} disabled={loading} className="w-full h-14 bg-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-500 transition-all disabled:opacity-50">
+                    {loading ? 'Processing...' : 'Deploy Update'}
+                  </button>
                 </div>
               </div>
             </div>
-            
-            {/* Ticker Management */}
-            <div className={`border rounded-[3rem] p-10 shadow-2xl relative overflow-hidden transition-all ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200'}`}>
-              <div className="space-y-8">
-                <div className="flex items-center space-x-3 border-b pb-6 border-white/5">
-                    <div className="w-2 h-6 bg-orange-500 rounded-full"></div>
-                    <h2 className={`text-sm font-black uppercase tracking-[0.2em] ${isDark ? 'text-white' : 'text-slate-900'}`}>Ticker Stream Controls</h2>
-                </div>
 
-                <div className="space-y-6">
-                   <div className="flex flex-wrap gap-3">
-                      {PRESET_COMMANDS.map((cmd, idx) => (
-                        <button 
-                          key={idx}
-                          onClick={() => pushToTicker(cmd)}
-                          className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${isDark ? 'bg-white/5 border border-white/10 text-white hover:bg-orange-500/20 hover:border-orange-500/50' : 'bg-slate-100 border border-slate-200 text-slate-700 hover:bg-orange-50 hover:border-orange-200'}`}
-                        >
-                          {cmd}
-                        </button>
-                      ))}
-                   </div>
-                   <div className="flex space-x-4">
-                      <input 
-                        type="text" 
-                        value={tickerInput}
-                        onChange={(e) => setTickerInput(e.target.value)}
-                        placeholder="Push custom ticker notice..."
-                        className={`flex-1 p-5 rounded-[1.5rem] border outline-none font-bold text-sm transition-all focus:ring-2 ${isDark ? 'bg-black/40 border-white/5 text-white focus:ring-orange-500/50' : 'bg-slate-50 border-slate-200 text-slate-900 focus:ring-orange-200'}`}
-                      />
-                      <button 
-                        onClick={() => pushToTicker(tickerInput)}
-                        className="px-8 bg-orange-600 hover:bg-orange-500 text-white rounded-[1.5rem] font-black uppercase tracking-widest text-[10px] shadow-lg shadow-orange-600/20 active:scale-95"
-                      >
-                        Push Live
-                      </button>
-                   </div>
-                </div>
+            {/* Quick Ticker Controls */}
+            <div className={`p-8 rounded-[2rem] border ${isDark ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200'}`}>
+              <h2 className="text-xs font-black uppercase tracking-widest text-orange-500 mb-6">Live Ticker Quick-Launch</h2>
+              <div className="flex flex-wrap gap-3">
+                {PRESET_COMMANDS.map((cmd, i) => (
+                  <button key={i} onClick={() => onUpdateBox('updates', cmd)} className="px-4 py-2 border border-white/5 bg-white/5 rounded-lg text-[10px] font-bold uppercase hover:bg-orange-500/20 hover:border-orange-500/50 transition-all">
+                    {cmd}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          <div className="lg:col-span-4">
-            <div className={`border rounded-[3rem] overflow-hidden shadow-2xl backdrop-blur-2xl flex flex-col h-full max-h-[1000px] transition-all ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-slate-200'}`}>
-               <div className={`p-8 border-b ${isDark ? 'border-white/5 bg-white/[0.02]' : 'border-slate-100 bg-slate-50/50'}`}><h3 className="text-[11px] font-black uppercase tracking-[0.3em]">Deployment History</h3></div>
-               <div className="flex-1 overflow-y-auto custom-scrollbar">
-                 {history.map(item => (
-                   <div key={item.id} className={`p-6 flex space-x-5 border-b last:border-0 ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
-                      <div className="w-12 h-12 rounded-xl bg-slate-500 overflow-hidden flex-shrink-0">
-                        {item.imagePreview ? <img src={item.imagePreview} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-indigo-500/20 text-indigo-500 text-xs font-bold uppercase tracking-tighter">Text</div>}
-                      </div>
-                      <div className="min-w-0">
-                        <p className={`text-[9px] font-black uppercase tracking-widest mb-1 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{item.target}</p>
-                        <p className={`text-xs font-bold line-clamp-2 italic leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.shortSummary}</p>
-                        <p className="text-[8px] opacity-40 mt-1 uppercase font-bold">{new Date(item.timestamp).toLocaleTimeString()}</p>
-                      </div>
-                   </div>
-                 ))}
-                 {history.length === 0 && (
-                   <div className="p-20 text-center opacity-20"><p className="text-[10px] font-black uppercase tracking-widest">No Recent Logs</p></div>
-                 )}
-               </div>
+          <div className="space-y-10">
+            <div className={`p-8 rounded-[2.5rem] border flex flex-col h-[600px] ${isDark ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200'}`}>
+              <h3 className="text-xs font-black uppercase tracking-widest mb-6 border-b border-white/5 pb-4">Log Stream</h3>
+              <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar">
+                {history.map(item => (
+                  <div key={item.id} className="p-4 rounded-xl bg-white/5 border border-white/5 flex gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex-shrink-0 overflow-hidden">
+                       {item.imagePreview && <img src={item.imagePreview} className="w-full h-full object-cover" />}
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black uppercase text-indigo-400">{item.target}</p>
+                      <p className="text-[10px] font-bold italic line-clamp-1">{item.shortSummary}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
