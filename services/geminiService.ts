@@ -5,11 +5,16 @@ import { SummarizeParams, SummaryResult } from "../types";
 export const summarizeContent = async (params: SummarizeParams): Promise<SummaryResult> => {
   const { text, imageBase64, mimeType } = params;
   
-  // Use process.env.API_KEY as per requirements
+  // The Netlify build command 'sed' will replace the text below with your actual key.
+  // DO NOT change the line below manually; let the build command handle it.
   const apiKey = process.env.API_KEY;
   
-  if (!apiKey) {
-    throw new Error("API Key is missing. Please ensure the API_KEY environment variable is set in your hosting provider's dashboard.");
+  if (!apiKey || apiKey === "undefined" || (typeof apiKey === 'string' && apiKey.includes("process.env"))) {
+    throw new Error(
+      "AI NODE OFFLINE: Key Injection Failed. " +
+      "Ensure Netlify Build Command is: sed -i \"s|process.env.API_KEY|'$API_KEY'|g\" services/geminiService.ts " +
+      "and Publish Directory is set to '.'"
+    );
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -17,7 +22,7 @@ export const summarizeContent = async (params: SummarizeParams): Promise<Summary
   const prompt = `
     Analyze the provided content and return a JSON object.
     1. "detailedSummary": Comprehensive Markdown analysis with bullet points.
-    2. "shortSummary": A single, impactful sentence (max 15 words) suitable for a scrolling ticker.
+    2. "shortSummary": A single, impactful sentence (max 15 words) with an emoji.
   `;
 
   const parts: any[] = [{ text: prompt }];
@@ -44,38 +49,28 @@ export const summarizeContent = async (params: SummarizeParams): Promise<Summary
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            detailedSummary: {
-              type: Type.STRING,
-              description: "Markdown detailed summary.",
-            },
-            shortSummary: {
-              type: Type.STRING,
-              description: "Concise headline summary.",
-            },
+            detailedSummary: { type: Type.STRING },
+            shortSummary: { type: Type.STRING },
           },
           required: ["detailedSummary", "shortSummary"],
         },
       },
     });
 
-    // Handle cases where model might still return markdown-wrapped JSON
+    // Strip markdown code blocks if the model includes them
     let rawText = response.text || "";
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const cleanJson = jsonMatch ? jsonMatch[0] : rawText;
+    const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
 
     const result = JSON.parse(cleanJson);
     return {
-      detailedSummary: result.detailedSummary || "No detailed summary available.",
-      shortSummary: result.shortSummary || "No highlight available.",
+      detailedSummary: result.detailedSummary || "Summary generation successful, but no detail provided.",
+      shortSummary: result.shortSummary || "New update received! 📡",
     };
   } catch (error: any) {
     console.error("Gemini API Error:", error);
     if (error.message?.includes("403")) {
-      throw new Error("Access Denied (403): Your API Key might be restricted or invalid.");
+      throw new Error("Access Denied (403): Check if your API Key has Gemini API enabled in Google AI Studio.");
     }
-    if (error.message?.includes("404")) {
-      throw new Error("Model not found (404): The specified Gemini model is unavailable.");
-    }
-    throw new Error(error.message || "An unexpected error occurred during AI synthesis.");
+    throw new Error(error.message || "The AI node is currently unreachable. Check your internet connection.");
   }
 };

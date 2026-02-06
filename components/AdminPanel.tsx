@@ -32,6 +32,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
   const [error, setError] = useState<{message: string, detail?: string} | null>(null);
   const [targetBox, setTargetBox] = useState<TargetBox>('general');
 
+  // Check if API key is likely injected
+  const isAiLinked = !process.env.API_KEY?.includes("process.env") && process.env.API_KEY !== undefined;
+
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
@@ -58,7 +61,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
 
   const handleSync = async () => {
     if (!inputText.trim() && !selectedFile) {
-      setError({ message: "Empty Payload", detail: "Please provide either text content or an image for the AI to analyze." });
+      setError({ message: "Payload Missing", detail: "Enter text or upload an image to begin synthesis." });
       return;
     }
 
@@ -89,7 +92,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
           type: inputText && selectedFile ? 'both' : selectedFile ? 'image' : 'text',
           target: targetBox,
           detailedSummary: inputText,
-          shortSummary: inputText || "Manual Update",
+          shortSummary: inputText || "Manual Update Applied",
           imagePreview: persistentImageSrc,
         };
         
@@ -118,7 +121,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
         setPreviewUrl(null);
       }
     } catch (err: any) {
-      setError({ message: "Sync Failed", detail: err.message });
+      setError({ 
+        message: "AI Sync Error", 
+        detail: err.message || "Failed to communicate with Gemini API." 
+      });
     } finally {
       setLoading(false);
     }
@@ -136,8 +142,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
             </button>
             <div>
-              <h1 className={`text-3xl font-black tracking-tighter uppercase italic transition-colors ${isDark ? 'text-white' : 'text-slate-900'}`}>Control <span className="text-indigo-500">Center</span></h1>
-              <p className={`text-[10px] font-black uppercase tracking-[0.4em] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Terminal ID: NODE-ALPHA-01</p>
+              <div className="flex items-center space-x-3">
+                <h1 className={`text-3xl font-black tracking-tighter uppercase italic transition-colors ${isDark ? 'text-white' : 'text-slate-900'}`}>Control <span className="text-indigo-500">Center</span></h1>
+                <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${isAiLinked ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500 animate-pulse'}`}>
+                  {isAiLinked ? 'AI LINKED' : 'AI OFFLINE'}
+                </div>
+              </div>
+              <p className={`text-[10px] font-black uppercase tracking-[0.4em] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>System: NODE-ALPHA-01</p>
             </div>
           </div>
           <div className="flex items-center space-x-6">
@@ -156,13 +167,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
 
         {error && (
           <div className="mb-10 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className={`p-6 rounded-[2rem] border-2 flex items-start space-x-4 ${isDark ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-red-50 border-red-200 text-red-800'}`}>
-              <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              <div>
-                <p className="font-black uppercase text-xs tracking-widest mb-1">{error.message}</p>
-                <p className="text-sm opacity-80">{error.detail}</p>
+            <div className={`p-8 rounded-[2.5rem] border-2 flex items-start space-x-5 ${isDark ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-red-50 border-red-200 text-red-800'}`}>
+              <div className="p-3 bg-red-500/20 rounded-2xl">
+                <svg className="w-8 h-8 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
               </div>
-              <button onClick={() => setError(null)} className="ml-auto opacity-50 hover:opacity-100"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
+              <div className="flex-1">
+                <p className="font-black uppercase text-sm tracking-widest mb-2">{error.message}</p>
+                <p className="text-sm opacity-80 leading-relaxed font-medium">{error.detail}</p>
+                {error.detail?.includes("Netlify") && (
+                   <div className="mt-4 space-y-2">
+                     <p className="text-[10px] font-black uppercase tracking-wider opacity-60">Apply this build command in Netlify:</p>
+                     <div className={`p-4 rounded-xl font-mono text-xs overflow-x-auto ${isDark ? 'bg-black/40' : 'bg-white/50'}`}>
+                        sed -i "s|process.env.API_KEY|'$API_KEY'|g" services/geminiService.ts
+                     </div>
+                   </div>
+                )}
+              </div>
+              <button onClick={() => setError(null)} className="opacity-50 hover:opacity-100 transition-opacity"><svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
             </div>
           </div>
         )}
