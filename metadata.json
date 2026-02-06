@@ -1,0 +1,5 @@
+{
+  "name": "Gemini Insight Dashboard",
+  "description": "A high-performance AI dashboard that summarizes complex text and visual content using Gemini 3 Flash. Features history tracking, multi-modal analysis, and a sleek modern UI.",
+  "requestFramePermissions": []
+}
