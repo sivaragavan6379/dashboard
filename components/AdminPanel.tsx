@@ -30,7 +30,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
   const [loading, setLoading] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
   const [error, setError] = useState<{message: string, detail?: string} | null>(null);
-  const [currentResult, setCurrentResult] = useState<SummaryResult | null>(null);
   const [targetBox, setTargetBox] = useState<TargetBox>('general');
 
   useEffect(() => {
@@ -59,53 +58,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
 
   const handleSync = async () => {
     if (!inputText.trim() && !selectedFile) {
-      setError({ message: "Data payload required. Please input text or attach a visual asset." });
+      setError({ message: "Empty Payload", detail: "Please provide either text content or an image for the AI to analyze." });
       return;
     }
 
     setError(null);
-    setCurrentResult(null);
+    setLoading(true);
 
-    let persistentImageSrc: string | undefined = undefined;
-    if (selectedFile) {
-      const reader = new FileReader();
-      const imageBase64 = await new Promise<string>((res, rej) => {
-        reader.onload = () => res((reader.result as string).split(',')[1]);
-        reader.onerror = () => rej(new Error("Image serialization failure"));
-        reader.readAsDataURL(selectedFile);
-      });
-      persistentImageSrc = `data:${selectedFile.type};base64,${imageBase64}`;
-    }
+    try {
+      let persistentImageSrc: string | undefined = undefined;
+      let imageBase64: string | undefined = undefined;
+      let mimeType: string | undefined = undefined;
 
-    if (isManualMode) {
-      const newItem: SummaryHistoryItem = {
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-        type: inputText && selectedFile ? 'both' : selectedFile ? 'image' : 'text',
-        target: targetBox,
-        detailedSummary: inputText,
-        shortSummary: inputText || "Manual Update",
-        imagePreview: persistentImageSrc,
-      };
-      
-      setHistory(prev => [newItem, ...prev].slice(0, 15));
-      onUpdateBox(targetBox, inputText || "Update Applied", persistentImageSrc);
-      setInputText('');
-      setSelectedFile(null);
-      setPreviewUrl(null);
-    } else {
-      setLoading(true);
-      try {
-        let imageBase64: string | undefined;
-        let mimeType: string | undefined;
+      if (selectedFile) {
+        const reader = new FileReader();
+        const base64Data = await new Promise<string>((res, rej) => {
+          reader.onload = () => res((reader.result as string).split(',')[1]);
+          reader.onerror = () => rej(new Error("Image serialization failure"));
+          reader.readAsDataURL(selectedFile);
+        });
+        imageBase64 = base64Data;
+        mimeType = selectedFile.type;
+        persistentImageSrc = `data:${mimeType};base64,${imageBase64}`;
+      }
 
-        if (selectedFile) {
-          imageBase64 = persistentImageSrc?.split(',')[1];
-          mimeType = selectedFile.type;
-        }
-
+      if (isManualMode) {
+        const newItem: SummaryHistoryItem = {
+          id: Date.now().toString(),
+          timestamp: Date.now(),
+          type: inputText && selectedFile ? 'both' : selectedFile ? 'image' : 'text',
+          target: targetBox,
+          detailedSummary: inputText,
+          shortSummary: inputText || "Manual Update",
+          imagePreview: persistentImageSrc,
+        };
+        
+        setHistory(prev => [newItem, ...prev].slice(0, 15));
+        onUpdateBox(targetBox, inputText || "Update Applied", persistentImageSrc);
+        setInputText('');
+        setSelectedFile(null);
+        setPreviewUrl(null);
+      } else {
         const result = await summarizeContent({ text: inputText, imageBase64, mimeType });
-        setCurrentResult(result);
         
         const newItem: SummaryHistoryItem = {
           id: Date.now().toString(),
@@ -122,11 +116,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
         setInputText('');
         setSelectedFile(null);
         setPreviewUrl(null);
-      } catch (err: any) {
-        setError({ message: "Synthesis error.", detail: err.message });
-      } finally {
-        setLoading(false);
       }
+    } catch (err: any) {
+      setError({ message: "Sync Failed", detail: err.message });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -157,62 +151,98 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
                     <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg><span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Dark</span></>
                 )}
              </button>
-             <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 font-black">AI</div>
           </div>
         </div>
 
+        {error && (
+          <div className="mb-10 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className={`p-6 rounded-[2rem] border-2 flex items-start space-x-4 ${isDark ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-red-50 border-red-200 text-red-800'}`}>
+              <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <div>
+                <p className="font-black uppercase text-xs tracking-widest mb-1">{error.message}</p>
+                <p className="text-sm opacity-80">{error.detail}</p>
+              </div>
+              <button onClick={() => setError(null)} className="ml-auto opacity-50 hover:opacity-100"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg></button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-8 space-y-10">
-            {/* AI/Manual Deployment Portal */}
             <div className={`border rounded-[3rem] p-10 shadow-2xl relative overflow-hidden transition-all ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200'}`}>
               <div className="relative z-10 space-y-8">
                 <div className={`flex items-center justify-between border-b pb-6 transition-colors ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
                   <div className="flex items-center space-x-3">
                     <div className="w-2 h-6 bg-indigo-500 rounded-full"></div>
-                    <h2 className={`text-sm font-black uppercase tracking-[0.2em] ${isDark ? 'text-white' : 'text-slate-900'}`}>Data Portal</h2>
+                    <h2 className={`text-sm font-black uppercase tracking-[0.2em] ${isDark ? 'text-white' : 'text-slate-900'}`}>Deployment Portal</h2>
                   </div>
                   <div className={`flex p-1.5 rounded-2xl border transition-colors ${isDark ? 'bg-black/40 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
-                    <button onClick={() => setIsManualMode(false)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!isManualMode ? 'bg-indigo-600 text-white shadow-lg' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>AI Mode</button>
+                    <button onClick={() => setIsManualMode(false)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!isManualMode ? 'bg-indigo-600 text-white shadow-lg' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>AI Sync</button>
                     <button onClick={() => setIsManualMode(true)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isManualMode ? (isDark ? 'bg-slate-700' : 'bg-slate-400') + ' text-white shadow-lg' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>Manual</button>
                   </div>
                 </div>
+                
                 <textarea
                   className={`w-full h-44 p-8 border rounded-[2rem] focus:ring-4 outline-none font-medium transition-all text-xl resize-none custom-scrollbar ${isDark ? 'bg-black/40 border-white/5 text-white placeholder:text-slate-700' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-300'}`}
-                  placeholder={isManualMode ? "Enter exact text..." : "Paste content here..."}
+                  placeholder={isManualMode ? "Enter manual text update..." : "Paste long text or upload image for AI summary..."}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                 />
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className={`relative h-32 border-2 border-dashed rounded-[2rem] transition-all group overflow-hidden cursor-pointer ${isDark ? 'border-white/10 bg-black/30' : 'border-slate-200 bg-slate-50'}`}>
                     {previewUrl ? (
                       <div className="w-full h-full relative">
                         <img src={previewUrl} className="w-full h-full object-cover" alt="Asset" />
-                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center"><button onClick={() => { setSelectedFile(null); setPreviewUrl(null); }} className="px-6 py-2 bg-red-600 text-white rounded-full text-xs font-black">Remove</button></div>
+                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center">
+                          <button onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setPreviewUrl(null); }} className="px-6 py-2 bg-red-600 text-white rounded-full text-xs font-black">Clear Asset</button>
+                        </div>
                       </div>
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center"><p className="text-[10px] font-black uppercase tracking-widest">Select Image</p><input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0" /></div>
+                      <div className="w-full h-full flex flex-col items-center justify-center space-y-2">
+                        <svg className="w-6 h-6 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Add Image</p>
+                        <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-col justify-between space-y-4">
-                    <select value={targetBox} onChange={(e) => setTargetBox(e.target.value as TargetBox)} className={`w-full p-4 border rounded-[1.5rem] text-sm font-black uppercase tracking-widest ${isDark ? 'bg-black/40 border-white/5 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}>
-                      <option value="exam">Node 01: Exam</option>
-                      <option value="updates">Node 02: Feed</option>
-                      <option value="event">Node 03: Events</option>
-                      <option value="quote">Node 04: Quote</option>
-                      <option value="general">Node 05: Core</option>
+                    <select 
+                      value={targetBox} 
+                      onChange={(e) => setTargetBox(e.target.value as TargetBox)} 
+                      className={`w-full p-4 border rounded-[1.5rem] text-sm font-black uppercase tracking-widest outline-none ${isDark ? 'bg-black/40 border-white/5 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                    >
+                      <option value="exam">Target: Exam Corner</option>
+                      <option value="updates">Target: Live Feed</option>
+                      <option value="event">Target: Campus Events</option>
+                      <option value="quote">Target: Daily Wisdom</option>
+                      <option value="general">Target: Core Node</option>
                     </select>
-                    <button onClick={handleSync} className={`w-full h-16 rounded-[1.5rem] font-black uppercase tracking-widest text-white transition-all active:scale-95 ${isManualMode ? 'bg-amber-600' : 'bg-indigo-600'}`}>Sync Terminal</button>
+                    <button 
+                      onClick={handleSync} 
+                      disabled={loading}
+                      className={`w-full h-16 rounded-[1.5rem] font-black uppercase tracking-widest text-white transition-all active:scale-95 flex items-center justify-center space-x-3 disabled:opacity-50 ${isManualMode ? 'bg-amber-600' : 'bg-indigo-600'}`}
+                    >
+                      {loading ? (
+                        <>
+                          <div className="w-5 h-5 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          <span>Syncing...</span>
+                        </>
+                      ) : (
+                        <span>Deploy Update</span>
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* Live Ticker Command Center */}
+            
+            {/* Ticker Management */}
             <div className={`border rounded-[3rem] p-10 shadow-2xl relative overflow-hidden transition-all ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200'}`}>
               <div className="space-y-8">
                 <div className="flex items-center space-x-3 border-b pb-6 border-white/5">
                     <div className="w-2 h-6 bg-orange-500 rounded-full"></div>
-                    <h2 className={`text-sm font-black uppercase tracking-[0.2em] ${isDark ? 'text-white' : 'text-slate-900'}`}>Ticker Command Center</h2>
+                    <h2 className={`text-sm font-black uppercase tracking-[0.2em] ${isDark ? 'text-white' : 'text-slate-900'}`}>Ticker Stream Controls</h2>
                 </div>
 
                 <div className="space-y-6">
@@ -227,13 +257,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
                         </button>
                       ))}
                    </div>
-
                    <div className="flex space-x-4">
                       <input 
                         type="text" 
                         value={tickerInput}
                         onChange={(e) => setTickerInput(e.target.value)}
-                        placeholder="Custom ticker message..."
+                        placeholder="Push custom ticker notice..."
                         className={`flex-1 p-5 rounded-[1.5rem] border outline-none font-bold text-sm transition-all focus:ring-2 ${isDark ? 'bg-black/40 border-white/5 text-white focus:ring-orange-500/50' : 'bg-slate-50 border-slate-200 text-slate-900 focus:ring-orange-200'}`}
                       />
                       <button 
@@ -250,14 +279,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ theme, setTheme, history
 
           <div className="lg:col-span-4">
             <div className={`border rounded-[3rem] overflow-hidden shadow-2xl backdrop-blur-2xl flex flex-col h-full max-h-[1000px] transition-all ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-slate-200'}`}>
-               <div className={`p-8 border-b ${isDark ? 'border-white/5 bg-white/[0.02]' : 'border-slate-100 bg-slate-50/50'}`}><h3 className="text-[11px] font-black uppercase tracking-[0.3em]">Activity Logs</h3></div>
+               <div className={`p-8 border-b ${isDark ? 'border-white/5 bg-white/[0.02]' : 'border-slate-100 bg-slate-50/50'}`}><h3 className="text-[11px] font-black uppercase tracking-[0.3em]">Deployment History</h3></div>
                <div className="flex-1 overflow-y-auto custom-scrollbar">
                  {history.map(item => (
                    <div key={item.id} className={`p-6 flex space-x-5 border-b last:border-0 ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
-                      <div className="w-12 h-12 rounded-xl bg-slate-500 overflow-hidden flex-shrink-0">{item.imagePreview ? <img src={item.imagePreview} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-indigo-500/20 text-indigo-500">📄</div>}</div>
+                      <div className="w-12 h-12 rounded-xl bg-slate-500 overflow-hidden flex-shrink-0">
+                        {item.imagePreview ? <img src={item.imagePreview} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-indigo-500/20 text-indigo-500 text-xs font-bold uppercase tracking-tighter">Text</div>}
+                      </div>
                       <div className="min-w-0">
-                        <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{item.target}</p>
-                        <p className={`text-xs font-bold line-clamp-2 italic ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.shortSummary}</p>
+                        <p className={`text-[9px] font-black uppercase tracking-widest mb-1 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{item.target}</p>
+                        <p className={`text-xs font-bold line-clamp-2 italic leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.shortSummary}</p>
+                        <p className="text-[8px] opacity-40 mt-1 uppercase font-bold">{new Date(item.timestamp).toLocaleTimeString()}</p>
                       </div>
                    </div>
                  ))}
